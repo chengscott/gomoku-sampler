@@ -1,67 +1,14 @@
-#ifndef MCTS_HEADER_PETTER
-#define MCTS_HEADER_PETTER
-//
-// Petter Strandmark 2013
-// petter.strandmark@gmail.com
-//
-// Monte Carlo Tree Search for finite games.
-//
-// Originally based on Python code at
-// http://mcts.ai/code/python.html
-//
-// Uses the "root parallelization" technique [1].
-//
-// This game engine can play any game defined by a state like this:
-/*
-
-class GameState
-{
-public:
-	typedef int Move;
-	static const Move no_move = ...
-
-	void do_move(Move move);
-	template<typename RandomEngine>
-	void do_random_move(*engine);
-	bool has_moves() const;
-	std::vector<Move> get_moves() const;
-
-	// Returns a value in {0, 0.5, 1}.
-	// This should not be an evaluation function, because it will only be
-	// called for finished games. Return 0.5 to indicate a draw.
-	double get_result(int current_player_to_move) const;
-
-	int player_to_move;
-
-	// ...
-private:
-	// ...
-};
-
-*/
-//
-// See the examples for more details. Given a suitable State, the
-// following function (tries to) compute the best move for the
-// player to move.
-//
-
-namespace MCTS
-{
-struct ComputeOptions
-{
+namespace MCTS {
+struct ComputeOptions {
 	int number_of_threads;
 	int number_of_repeat;
 	int iterations_param1;
 	int iterations_param2;
 	int max_iterations;
 	int top_n;
-	size_t file_size;
 	int board_size;
 	double max_time;
 	bool verbose;
-	bool make_dataset;
-	string dat_dir;
-	string file_prefix;
 	double best_wins;
 	int best_visits;
 	bool quit;
@@ -74,10 +21,8 @@ struct ComputeOptions
 		max_iterations(10000),
 		top_n(1),
 		board_size(15),
-		file_size(10),
 		max_time(-1.0), // default is no time limit.
 		verbose(false),
-		make_dataset(false),
 		best_wins(0.),
 		best_visits(0),
 		quit(false)
@@ -88,12 +33,6 @@ template<typename State>
 typename State::Move compute_move(const State root_state,
                                   ComputeOptions& options = ComputeOptions());
 }
-//
-//
-// [1] Chaslot, G. M. B., Winands, M. H., & van Den Herik, H. J. (2008).
-//     Parallel monte-carlo tree search. In Computers and Games (pp. 
-//     60-71). Springer Berlin Heidelberg.
-//
 
 #include <algorithm>
 #include <cstdlib>
@@ -113,30 +52,16 @@ typename State::Move compute_move(const State root_state,
 #include <omp.h>
 #endif
 
-namespace MCTS
-{
-using std::cerr;
+namespace MCTS {
 using std::endl;
 using std::vector;
-using std::size_t;
-
-void check(bool expr, const char* message);
-void assertion_failed(const char* expr, const char* file, int line);
-
-#define attest(expr) if (!(expr)) { ::MCTS::assertion_failed(#expr, __FILE__, __LINE__); }
-#ifndef NDEBUG
-	#define dattest(expr) if (!(expr)) { ::MCTS::assertion_failed(#expr, __FILE__, __LINE__); }
-#else
-	#define dattest(expr) ((void)0)
-#endif
 
 //
 // This class is used to build the game tree. The root is created by the users and
 // the rest of the tree is created by add_node.
 //
 template<typename State>
-class Node
-{
+class Node {
 public:
 	typedef typename State::Move Move;
 
@@ -148,8 +73,7 @@ public:
 	Move get_untried_move(RandomEngine* engine) const;
 	Node* best_child() const;
 
-	bool has_children() const
-	{
+	bool has_children() const {
 		return ! children.empty();
 	}
 
@@ -158,7 +82,6 @@ public:
 	void update(double result);
 
 	std::string to_string() const;
-	std::string tree_to_string(int max_depth = 1000000, int indent = 0) const;
 
 	const Move move;
 	Node* const parent;
@@ -178,7 +101,6 @@ private:
 	std::string indent_string(int indent) const;
 
 	Node(const Node&);
-	Node& operator = (const Node&);
 
 	double UCT_score;
 };
@@ -211,42 +133,30 @@ Node<State>::Node(const State& state, const Move& move_, Node* parent_) :
 { }
 
 template<typename State>
-Node<State>::~Node()
-{
-	for (auto child: children) {
-		delete child;
-	}
+Node<State>::~Node() {
+	for (auto child: children) delete child;
 }
 
 template<typename State>
-bool Node<State>::has_untried_moves() const
-{
+bool Node<State>::has_untried_moves() const {
 	return ! moves.empty();
 }
 
 template<typename State>
 template<typename RandomEngine>
-typename State::Move Node<State>::get_untried_move(RandomEngine* engine) const
-{
-	attest( ! moves.empty());
+typename State::Move Node<State>::get_untried_move(RandomEngine* engine) const {
 	std::uniform_int_distribution<std::size_t> moves_distribution(0, moves.size() - 1);
 	return moves[moves_distribution(*engine)];
 }
 
 template<typename State>
-Node<State>* Node<State>::best_child() const
-{
-	attest(moves.empty());
-	attest( ! children.empty() );
-
+Node<State>* Node<State>::best_child() const {
 	return *std::max_element(children.begin(), children.end(),
 		[](Node* a, Node* b) { return a->visits < b->visits; });;
 }
 
 template<typename State>
-Node<State>* Node<State>::select_child_UCT() const
-{
-	attest( ! children.empty() );
+Node<State>* Node<State>::select_child_UCT() const {
 	for (auto child: children) {
 		child->UCT_score = double(child->wins) / double(child->visits) +
 			std::sqrt(2.0 * std::log(double(this->visits)) / child->visits);
@@ -257,22 +167,18 @@ Node<State>* Node<State>::select_child_UCT() const
 }
 
 template<typename State>
-Node<State>* Node<State>::add_child(const Move& move, const State& state)
-{
+Node<State>* Node<State>::add_child(const Move& move, const State& state) {
 	auto node = new Node(state, move, this);
 	children.push_back(node);
-	attest( ! children.empty());
 
 	auto itr = moves.begin();
 	for (; itr != moves.end() && *itr != move; ++itr);
-	attest(itr != moves.end());
 	moves.erase(itr);
 	return node;
 }
 
 template<typename State>
-void Node<State>::update(double result)
-{
+void Node<State>::update(double result) {
 	visits++;
 
 	wins += result;
@@ -281,8 +187,7 @@ void Node<State>::update(double result)
 }
 
 template<typename State>
-std::string Node<State>::to_string() const
-{
+std::string Node<State>::to_string() const {
 	std::stringstream sout;
 	sout << "["
 	     << "P" << 3 - player_to_move << " "
@@ -292,49 +197,23 @@ std::string Node<State>::to_string() const
 	return sout.str();
 }
 
-template<typename State>
-std::string Node<State>::tree_to_string(int max_depth, int indent) const
-{
-	if (indent >= max_depth) {
-		return "";
-	}
-
-	std::string s = indent_string(indent) + to_string();
-	for (auto child: children) {
-		s += child->tree_to_string(max_depth, indent + 1);
-	}
-	return s;
-}
-
-template<typename State>
-std::string Node<State>::indent_string(int indent) const
-{
-	std::string s = "";
-	for (int i = 1; i <= indent; ++i) {
-		s += "| ";
-	}
-	return s;
-}
-
 /////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////
 
 
 template<typename State>
-std::unique_ptr<Node<State>>  compute_tree(const State root_state,
+std::unique_ptr<Node<State>> compute_tree(const State root_state,
                                            const ComputeOptions options,
                                            std::mt19937_64::result_type initial_seed)
 {
 	std::mt19937_64 random_engine(initial_seed);
 
-	attest(options.max_iterations >= 0 || options.max_time >= 0);
 	if (options.max_time >= 0) {
 		#ifndef USE_OPENMP
 		throw std::runtime_error("ComputeOptions::max_time requires OpenMP.");
 		#endif
 	}
 	// Will support more players later.
-	attest(root_state.player_to_move == 1 || root_state.player_to_move == 2);
 	auto root = std::unique_ptr<Node<State>>(new Node<State>(root_state));
 
 	#ifdef USE_OPENMP
@@ -392,15 +271,12 @@ std::unique_ptr<Node<State>>  compute_tree(const State root_state,
 
 template<typename State>
 typename State::Move compute_move(const State root_state,
-                                  ComputeOptions& options)
-{
+                                  ComputeOptions& options) {
 	using namespace std;
 
 	// Will support more players later.
-	attest(root_state.player_to_move == 1 || root_state.player_to_move == 2);
 
 	auto moves = root_state.get_moves();
-	attest(moves.size() > 0);
 	if (moves.size() == 1) {
 		return moves[0];
 	}
@@ -512,42 +388,7 @@ typename State::Move compute_move(const State root_state,
 	}
 	#endif
 
-	if (options.make_dataset) {
-		options.best_wins = wins[best_move];
-		options.best_visits = visits[best_move];
-	}
-
 	return best_move;
 }
 
-/////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////
-
-
-void check(bool expr, const char* message)
-{
-	if (!expr) {
-		throw std::invalid_argument(message);
-	}
 }
-
-void assertion_failed(const char* expr, const char* file_cstr, int line)
-{
-	using namespace std;
-
-	// Extract the file name only.
-	string file(file_cstr);
-	auto pos = file.find_last_of("/\\");
-	if (pos == string::npos) {
-		pos = 0;
-	}
-	file = file.substr(pos + 1);  // Returns empty string if pos + 1 == length.
-
-	stringstream sout;
-	sout << "Assertion failed: " << expr << " in " << file << ":" << line << ".";
-	throw runtime_error(sout.str().c_str());
-}
-
-}
-
-#endif
